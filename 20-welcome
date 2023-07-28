@@ -1,0 +1,29 @@
+#!/bin/bash
+
+clear
+
+# Welcome message
+WELCOME_DOCKYDEB="
+  _____             _          _____  ______ ____
+ |  __ \           | |        |  __ \|  ____|  _ \\
+ | |  | | ___   ___| | ___   _| |  | | |__  | |_) |
+ | |  | |/ _ \ / __| |/ / | | | |  | |  __| |  _ <
+ | |__| | (_) | (__|   <| |_| | |__| | |____| |_) |
+ |_____/ \___/ \___|_|\_\\\\\__, |_____/|______|____/
+                          __/ |
+                         |___/
+
+---
+
+Welcome to DockyDEB, a Debian-based Docker image from
+Cloudresty.com packaged with a small set of tools for
+quick and easy debugging sessions.
+
+For more details please have a look at the README file
+at https://github.com/cloudresty/dockydeb
+
+---
+"
+
+# Print welcome message
+echo -e "$WELCOME_DOCKYDEB"
