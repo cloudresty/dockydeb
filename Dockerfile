@@ -9,12 +9,14 @@ FROM    debian:bookworm-slim
 LABEL   org.opencontainers.image.authors="Cloudresty" \
         org.opencontainers.image.url="https://hub.docker.com/r/cloudresty/dockydeb" \
         org.opencontainers.image.source="https://github.com/cloudresty/dockydeb" \
-        org.opencontainers.image.version="1.0.0" \
-        org.opencontainers.image.revision="1.0.0" \
+        org.opencontainers.image.version="1.1.0" \
+        org.opencontainers.image.revision="1.1.0" \
         org.opencontainers.image.vendor="Cloudresty" \
         org.opencontainers.image.licenses="MIT" \
         org.opencontainers.image.title="dockydeb" \
         org.opencontainers.image.description="Debian Based Debugging Container"
+
+ENV     LC_ALL=C.UTF-8, LANG=C.UTF-8
 
 # Update and Upgrade
 RUN     apt-get update && \
@@ -29,6 +31,7 @@ RUN     apt-get install -y \
         iputils-ping \
         gnupg \
         htop \
+        btop \
         jq \
         net-tools \
         ncdu \
