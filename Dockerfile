@@ -9,8 +9,8 @@ FROM    debian:bookworm-slim
 LABEL   org.opencontainers.image.authors="Cloudresty" \
         org.opencontainers.image.url="https://hub.docker.com/r/cloudresty/dockydeb" \
         org.opencontainers.image.source="https://github.com/cloudresty/dockydeb" \
-        org.opencontainers.image.version="1.1.2" \
-        org.opencontainers.image.revision="1.1.2" \
+        org.opencontainers.image.version="1.1.3" \
+        org.opencontainers.image.revision="1.1.3" \
         org.opencontainers.image.vendor="Cloudresty" \
         org.opencontainers.image.licenses="MIT" \
         org.opencontainers.image.title="dockydeb" \

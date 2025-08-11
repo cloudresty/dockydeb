@@ -8,6 +8,8 @@ on:
     types: [closed]
     branches:
       - develop
+  workflow_dispatch:
+    # Allow manual trigger for testing
 
 env:
   IMAGE_NAME: cloudresty/dockydeb
