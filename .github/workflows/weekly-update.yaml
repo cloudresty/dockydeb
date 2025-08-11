@@ -1,0 +1,268 @@
+name: Weekly Update
+
+# This CI workflow runs weekly to update the DockyDEB container on the develop branch.
+# It updates base packages and bumps versions, preparing for the develop → main merge.
+
+on:
+  schedule:
+    # Run every Sunday at 2:00 AM UTC (only on develop branch)
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    # Allow manual trigger (only on develop branch)
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: cloudresty/dockydeb
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop'
+    outputs:
+      new-version: ${{ steps.version.outputs.new-version }}
+      version-changed: ${{ steps.version.outputs.version-changed }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Get current version
+      id: current-version
+      run: |
+        current_version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
+        echo "current-version=${current_version}" >> $GITHUB_OUTPUT
+        echo "Current version: ${current_version}"
+
+    - name: Generate new version
+      id: version
+      run: |
+        current_version="${{ steps.current-version.outputs.current-version }}"
+        # Remove 'v' prefix if present
+        version_number=${current_version#v}
+
+        # Split version into parts (assuming semver x.y.z)
+        IFS='.' read -r major minor patch <<< "$version_number"
+
+        # Increment patch version
+        new_patch=$((patch + 1))
+        new_version="v${major}.${minor}.${new_patch}"
+
+        echo "new-version=${new_version}" >> $GITHUB_OUTPUT
+        echo "New version: ${new_version}"
+
+        # Check if version actually changed
+        if [ "$current_version" != "$new_version" ]; then
+          echo "version-changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "version-changed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update version.env
+      if: steps.version.outputs.version-changed == 'true'
+      run: |
+        new_version="${{ steps.version.outputs.new-version }}"
+        echo "DOCKYDEB_VERSION=${new_version}" > version.env
+        echo "Updated version.env to ${new_version}"
+
+    - name: Update Dockerfile version labels
+      if: steps.version.outputs.version-changed == 'true'
+      run: |
+        new_version="${{ steps.version.outputs.new-version }}"
+        version_number=${new_version#v}
+
+        # Update the version and revision labels in Dockerfile
+        sed -i "s/org\.opencontainers\.image\.version=\"[^\"]*\"/org.opencontainers.image.version=\"${version_number}\"/g" Dockerfile
+        sed -i "s/org\.opencontainers\.image\.revision=\"[^\"]*\"/org.opencontainers.image.revision=\"${version_number}\"/g" Dockerfile
+
+        echo "Updated Dockerfile labels to ${version_number}"
+
+    - name: Commit version changes
+      if: steps.version.outputs.version-changed == 'true'
+      run: |
+        new_version="${{ steps.version.outputs.new-version }}"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add version.env Dockerfile
+        git commit -m "chore: bump version to ${new_version} [automated]" || exit 0
+        git push origin develop
+
+  docker-build-test:
+    runs-on: ubuntu-latest
+    needs: [update-version]
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Extract version from version.env
+      id: version
+      run: |
+        version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
+        version_number=${version#v}
+        echo "version=${version}" >> $GITHUB_OUTPUT
+        echo "version-number=${version_number}" >> $GITHUB_OUTPUT
+        echo "Building version: ${version}"
+
+    - name: Build Docker image (test)
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: |
+          ${{ env.IMAGE_NAME }}:test
+          ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+
+    - name: Test Docker image
+      run: |
+        echo "Testing basic container functionality..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test zsh --version
+        docker run --rm ${{ env.IMAGE_NAME }}:test curl --version
+        docker run --rm ${{ env.IMAGE_NAME }}:test git --version
+        echo "All basic tests passed!"
+
+  update-success:
+    runs-on: ubuntu-latest
+    needs: [update-version, docker-build-test]
+    if: success()
+
+    steps:
+    - name: Success notification
+      run: |
+        echo "Weekly DockyDEB update completed successfully on develop branch!"
+        echo "Triggered by: ${{ github.event_name }}"
+        echo "Branch: develop"
+        echo "Container build: PASSED"
+        echo "Version update: ${{ needs.update-version.outputs.version-changed == 'true' && 'UPDATED' || 'NO CHANGE' }}"
+        echo ""
+        echo "Ready for develop → main merge process!"
+
+  docker-release:
+    runs-on: ubuntu-latest
+    needs: [update-version, docker-build-test]
+    if: |
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+          # For tag pushes, use the tag
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "version=${TAG}" >> $GITHUB_OUTPUT
+          echo "version-number=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "Release from tag: ${TAG}"
+        else
+          # For scheduled/manual runs, use version from version.env
+          version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
+          version_number=${version#v}
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "version-number=${version_number}" >> $GITHUB_OUTPUT
+          echo "Release from version.env: ${version}"
+        fi
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ vars.CLR__DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.CLR__DOCKER_HUB_PAT }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          ${{ env.IMAGE_NAME }}:latest
+          ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:latest
+        cache-to: type=inline
+        platforms: linux/amd64,linux/arm64
+
+    - name: Image digest
+      run: |
+        echo "Image pushed successfully with tags:"
+        echo "   ${{ env.IMAGE_NAME }}:latest"
+        echo "   ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"
+        echo ""
+        echo "DockyDEB container updated with latest packages!"
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [update-version, docker-release]
+    if: |
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      needs.update-version.outputs.version-changed == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.update-version.outputs.new-version }}
+        release_name: DockyDEB ${{ needs.update-version.outputs.new-version }}
+        body: |
+          ## DockyDEB ${{ needs.update-version.outputs.new-version }}
+
+          **Automated weekly update** - This release includes updated packages and dependencies.
+
+          ### What's Updated
+          - Updated base Debian packages
+          - Latest versions of debugging tools
+          - Refreshed container image
+
+          ### Usage
+          ```bash
+          docker pull cloudresty/dockydeb:${{ needs.update-version.outputs.new-version }}
+          docker pull cloudresty/dockydeb:latest
+          ```
+
+          ### Tools Included
+          - curl, wget, git
+          - dnsutils, iputils-ping, net-tools
+          - htop, btop, ncdu
+          - vim, zsh with Oh My Zsh
+          - And many more debugging utilities
+
+          ---
+          *This release was automatically generated by the weekly CI pipeline.*
+        draft: false
+        prerelease: false
+
+  notify-success:
+    runs-on: ubuntu-latest
+    needs: [docker-release]
+    if: success()
+
+    steps:
+    - name: Success notification
+      run: |
+        echo "Weekly DockyDEB update completed successfully!"
+        echo "Triggered by: ${{ github.event_name }}"
+        echo "Branch/Tag: ${{ github.ref_name }}"
+        echo "Docker image pushed to Docker Hub"
+        echo ""
+        echo "The DockyDEB debugging container is now updated with the latest packages!"

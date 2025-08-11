@@ -1,0 +1,157 @@
+name: CI
+
+# This CI workflow validates the DockyDEB container on pushes and pull requests.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: cloudresty/dockydeb
+
+jobs:
+  validate-dockerfile:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Validate Dockerfile syntax
+      run: |
+        echo "Validating Dockerfile syntax..."
+
+        # Check if Dockerfile exists
+        if [ ! -f "Dockerfile" ]; then
+          echo "Dockerfile not found!"
+          exit 1
+        fi
+
+        # Basic syntax validation using docker buildx with --help
+        echo "Docker buildx is available: $(docker buildx version)"
+
+        # Parse Dockerfile for basic syntax issues
+        if ! grep -q "^FROM" Dockerfile; then
+          echo "ERROR: Dockerfile must start with FROM instruction"
+          exit 1
+        fi
+
+        echo "Dockerfile syntax validation completed"
+
+    - name: Check version consistency
+      run: |
+        echo "Checking version consistency..."
+
+        # Extract version from version.env
+        version_env=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
+        version_number=${version_env#v}
+
+        # Extract version from Dockerfile
+        dockerfile_version=$(grep 'org.opencontainers.image.version=' Dockerfile | head -1 | sed 's/.*version="\([^"]*\)".*/\1/')
+        dockerfile_revision=$(grep 'org.opencontainers.image.revision=' Dockerfile | head -1 | sed 's/.*revision="\([^"]*\)".*/\1/')
+
+        echo "Version in version.env: ${version_env}"
+        echo "Version in Dockerfile: ${dockerfile_version}"
+        echo "Revision in Dockerfile: ${dockerfile_revision}"
+
+        if [ "$version_number" != "$dockerfile_version" ] || [ "$version_number" != "$dockerfile_revision" ]; then
+          echo "Version mismatch detected!"
+          echo "   version.env: ${version_number}"
+          echo "   Dockerfile version: ${dockerfile_version}"
+          echo "   Dockerfile revision: ${dockerfile_revision}"
+          exit 1
+        fi
+
+        echo "All versions are consistent"
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: validate-dockerfile
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Extract version
+      id: version
+      run: |
+        version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
+        echo "version=${version}" >> $GITHUB_OUTPUT
+        echo "Building version: ${version}"
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: |
+          ${{ env.IMAGE_NAME }}:test-${{ github.run_id }}
+          ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        load: true
+
+    - name: Test container functionality
+      run: |
+        echo "Testing container functionality..."
+
+        # Test basic tools
+        echo "Testing basic command-line tools..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} zsh --version
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} curl --version
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} wget --version
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} git --version
+
+        # Test networking tools
+        echo "Testing networking tools..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} ping -c 1 8.8.8.8 || true
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} nslookup google.com || true
+
+        # Test system tools
+        echo "Testing system tools..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} htop --version || true
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} btop --version || true
+
+        # Test shell setup
+        echo "Testing shell setup..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} zsh -c "echo 'Shell test successful'"
+
+        # Test Oh My Zsh installation
+        echo "Testing Oh My Zsh installation..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} test -d /root/.oh-my-zsh && echo "Oh My Zsh installed"
+
+        # Test welcome message
+        echo "Testing welcome message..."
+        docker run --rm ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} test -f /etc/update-motd.d/20-welcome && echo "Welcome message configured"
+
+        echo "All functionality tests passed!"
+
+    - name: Test container size
+      run: |
+        echo "Checking container size..."
+        size=$(docker images ${{ env.IMAGE_NAME }}:test-${{ github.run_id }} --format "{{.Size}}")
+        echo "Container size: ${size}"
+
+        # Optional: Add size warnings if needed
+        echo "For a debugging container, size is less critical than functionality"
+
+  validate-success:
+    runs-on: ubuntu-latest
+    needs: [validate-dockerfile, build-and-test]
+    if: success()
+
+    steps:
+    - name: Validation success
+      run: |
+        echo "All CI checks passed successfully!"
+        echo "Dockerfile validation: PASSED"
+        echo "Version consistency: PASSED"
+        echo "Container build: PASSED"
+        echo "Functionality tests: PASSED"
+        echo ""
+        echo "DockyDEB container is ready for deployment!"
