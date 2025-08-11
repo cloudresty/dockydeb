@@ -114,6 +114,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: false
+        load: true
         tags: |
           ${{ env.IMAGE_NAME }}:test
           ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
