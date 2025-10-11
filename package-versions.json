@@ -1,0 +1,48 @@
+{
+  "last_updated": "2024-10-11T00:00:00Z",
+  "base_image": {
+    "name": "debian:bookworm-slim",
+    "digest": "",
+    "last_checked": ""
+  },
+  "packages": {
+    "curl": "",
+    "dnsutils": "",
+    "git": "",
+    "iputils-ping": "",
+    "gnupg": "",
+    "htop": "",
+    "btop": "",
+    "jq": "",
+    "net-tools": "",
+    "ncdu": "",
+    "telnet": "",
+    "unzip": "",
+    "vim": "",
+    "wget": "",
+    "zsh": "",
+    "zip": ""
+  },
+  "git_repositories": {
+    "ohmyzsh": {
+      "url": "https://github.com/ohmyzsh/ohmyzsh.git",
+      "commit_sha": "",
+      "last_checked": ""
+    },
+    "powerlevel10k": {
+      "url": "https://github.com/romkatv/powerlevel10k.git",
+      "commit_sha": "",
+      "last_checked": ""
+    },
+    "zsh-autosuggestions": {
+      "url": "https://github.com/zsh-users/zsh-autosuggestions.git",
+      "commit_sha": "",
+      "last_checked": ""
+    },
+    "zsh-syntax-highlighting": {
+      "url": "https://github.com/zsh-users/zsh-syntax-highlighting.git",
+      "commit_sha": "",
+      "last_checked": ""
+    }
+  }
+}

@@ -23,21 +23,26 @@ graph TD
 
 ### 1. Weekly Update (`weekly-update.yaml`)
 
-**Purpose**: Updates packages and versions on the `develop` branch weekly.
+**Purpose**: Intelligently checks for updates and only creates new versions when actual updates are detected.
 
 **Triggers**:
 
-- **Scheduled**: Every Sunday at 2:00 AM UTC (develop branch only)
-- **Manual**: Can be triggered manually via GitHub Actions UI
+- **Scheduled**: Every Sunday at 2:00 AM UTC (runs on main branch due to GitHub Actions limitations)
+- **Manual**: Can be triggered manually via GitHub Actions UI (with optional force update)
 
 **What it does**:
 
-1. **Version Management**: Automatically increments the patch version
-2. **File Updates**: Updates `version.env` and `Dockerfile` labels
-3. **Container Build**: Builds and tests the container image
-4. **Commit Changes**: Commits version updates to develop branch
+1. **Smart Update Detection**: Checks for updates to:
+   - Base image (debian:bookworm-slim)
+   - All apt packages
+   - Git repositories (Oh My Zsh, themes, plugins)
+2. **Conditional Version Bump**: Only increments version if updates are found
+3. **File Updates**: Updates `version.env`, `Dockerfile` labels, and `package-versions.json`
+4. **Container Build**: Builds and tests the container image (only if updates found)
+5. **Commit Changes**: Commits version updates to **develop branch** with detailed update summary
+6. **Triggers Pipeline**: Push to develop triggers the auto-merge-to-main workflow
 
-**Important**: This workflow does NOT push to Docker Hub or create releases.
+**Important**: This workflow runs on main but works on develop branch, then triggers the existing CI/CD pipeline.
 
 ### 2. Auto Merge to Main (`auto-merge-to-main.yaml`)
 
