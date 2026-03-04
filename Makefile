@@ -7,6 +7,7 @@ DOCKER_TAG = ${DOCKYDEB_VERSION}
 
 .PHONY: build shell clean
 
+# Default target
 help: ## Show list of make targets and their description.
 	@grep -E '^[%a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -15,6 +16,7 @@ build: ## Build docker image.
 	@docker buildx build \
 		--platform linux/amd64 \
 		--pull \
+		--load \
 		--force-rm -t ${DOCKER_REPO}:${DOCKER_TAG} \
 		--file Dockerfile .
 

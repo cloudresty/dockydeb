@@ -151,12 +151,12 @@ jobs:
           # Test Docker build one more time
           echo "Testing Docker build..."
           docker build --no-cache -t ${{ env.IMAGE_NAME }}:merge-test .
-          
+
           # Basic functionality test
           echo "Testing basic container functionality..."
           docker run --rm ${{ env.IMAGE_NAME }}:merge-test zsh --version
           docker run --rm ${{ env.IMAGE_NAME }}:merge-test curl --version
-          
+
           echo "All additional validation checks passed!"
           echo "tests_passed=true" >> $GITHUB_OUTPUT
 
@@ -222,7 +222,7 @@ jobs:
 
           ### Validation Completed
           - Dockerfile syntax validation
-          - Version consistency checks  
+          - Version consistency checks
           - Container build tests
           - Functionality tests
 

@@ -51,7 +51,7 @@ jobs:
             SHOULD_RELEASE=true
           elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "Push to main branch - checking if version is new..."
-            
+
             # Check if this version tag already exists
             if git tag --list | grep -q "^${CURRENT_VERSION}$"; then
               echo "Version ${CURRENT_VERSION} already has a tag - skipping release"
@@ -128,7 +128,7 @@ jobs:
         run: |
           VERSION="${{ needs.check-release.outputs.version }}"
           VERSION_NUMBER="${VERSION#v}"
-          
+
           # Determine release type
           RELEASE_TYPE="patch"
           if [ "${{ github.event.inputs.release_type }}" != "" ] && [ "${{ github.event.inputs.release_type }}" != "auto" ]; then
@@ -172,7 +172,7 @@ jobs:
 
           ### Tools Included
           - curl, wget, git
-          - dnsutils, iputils-ping, net-tools  
+          - dnsutils, iputils-ping, net-tools
           - htop, btop, ncdu
           - vim, zsh with Oh My Zsh
           - Powerlevel10K theme with plugins
@@ -242,7 +242,7 @@ jobs:
           echo "## DockyDEB Release Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: ${{ needs.check-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**GitHub Release**: Created successfully" >> $GITHUB_STEP_SUMMARY  
+          echo "**GitHub Release**: Created successfully" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Images**: Pushed to Docker Hub" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

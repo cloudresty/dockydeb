@@ -203,12 +203,18 @@ For more information about DockyDEB, see the main [README.md](../README.md) file
 
 &nbsp;
 
----
+🔝 [back to top](#dockydeb-cicd-workflows)
 
 &nbsp;
 
-Brought to you by the [Cloudresty](https://cloudresty.com) team.
+&nbsp;
+
+---
+
+### Cloudresty
 
 [Website](https://cloudresty.com) &nbsp;|&nbsp; [LinkedIn](https://www.linkedin.com/company/cloudresty) &nbsp;|&nbsp; [BlueSky](https://bsky.app/profile/cloudresty.com) &nbsp;|&nbsp; [GitHub](https://github.com/cloudresty) &nbsp;|&nbsp; [Docker Hub](https://hub.docker.com/u/cloudresty)
+
+<sub>&copy; Cloudresty</sub>
 
 &nbsp;
