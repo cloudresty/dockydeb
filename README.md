@@ -26,6 +26,8 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 - `net-tools` - Network configuration tools
 - `telnet` - Terminal network protocol
 
+&nbsp;
+
 🔝 [back to top](#dockydeb)
 
 &nbsp;
@@ -35,6 +37,8 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 - `htop` - Interactive process viewer
 - `btop` - Modern system monitor
 - `ncdu` - Disk usage analyzer
+
+&nbsp;
 
 🔝 [back to top](#dockydeb)
 
@@ -46,6 +50,8 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 - `vim` - Text editor
 - `jq` - JSON processor
 - `unzip`, `zip` - Archive utilities
+
+&nbsp;
 
 🔝 [back to top](#dockydeb)
 
@@ -59,6 +65,8 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 - Auto-suggestions and syntax highlighting
 - Custom welcome message
 
+&nbsp;
+
 🔝 [back to top](#dockydeb)
 
 &nbsp;
@@ -66,6 +74,8 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 ## Docker Usage
 
 DockyDEB basic usage, suitable for most debugging sessions. This will start a DockyDEB based container with a shell prompt.
+
+&nbsp;
 
 ```bash
 docker run \
@@ -81,6 +91,8 @@ docker run \
 
 DockyDEB with a mounted volume, suitable for debugging sessions that require access to local files. This will start a DockyDEB based container with a shell prompt and a mounted volume.
 
+&nbsp;
+
 ```bash
 docker run \
     --interactive \
@@ -92,6 +104,8 @@ docker run \
     cloudresty/dockydeb:latest zsh
 ```
 
+&nbsp;
+
 🔝 [back to top](#dockydeb)
 
 &nbsp;
@@ -100,26 +114,33 @@ docker run \
 
 DockyDEB can be used as a shell pod in a Kubernetes cluster. This will start a DockyDEB based pod with a shell prompt.
 
+&nbsp;
+
 ```bash
 kubectl run dockydeb \
     --stdin \
     --tty \
     --rm \
     --restart=Never \
+    --namespace=default \
     --image=cloudresty/dockydeb:latest \
     --command -- zsh
 ```
+
+&nbsp;
 
 🔝 [back to top](#dockydeb)
 
 &nbsp;
 
----
-
 &nbsp;
 
-Brought to you by the [Cloudresty](https://cloudresty.com) team.
+---
+
+### Cloudresty
 
 [Website](https://cloudresty.com) &nbsp;|&nbsp; [LinkedIn](https://www.linkedin.com/company/cloudresty) &nbsp;|&nbsp; [BlueSky](https://bsky.app/profile/cloudresty.com) &nbsp;|&nbsp; [GitHub](https://github.com/cloudresty) &nbsp;|&nbsp; [Docker Hub](https://hub.docker.com/u/cloudresty)
+
+<sub>&copy; Cloudresty</sub>
 
 &nbsp;
