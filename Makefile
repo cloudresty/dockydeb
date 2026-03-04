@@ -16,6 +16,7 @@ build: ## Build docker image.
 	@docker buildx build \
 		--platform linux/amd64 \
 		--pull \
+		--load \
 		--force-rm -t ${DOCKER_REPO}:${DOCKER_TAG} \
 		--file Dockerfile .
 
