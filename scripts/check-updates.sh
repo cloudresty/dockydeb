@@ -64,7 +64,7 @@ get_current_version() {
 check_base_image_updates() {
     log_info "Checking base image updates..."
 
-    local image="debian:bookworm-slim"
+    local image="debian:trixie-slim"
     local current_digest=$(get_current_version "base_image.digest")
 
     # Get latest digest from Docker Hub
