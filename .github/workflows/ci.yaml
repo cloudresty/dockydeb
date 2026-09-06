@@ -131,6 +131,38 @@ jobs:
 
         echo "All functionality tests passed!"
 
+    - name: Build and check the non-root variant
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./Dockerfile
+        target: nonroot
+        push: false
+        load: true
+        tags: ${{ env.IMAGE_NAME }}:nonroot-${{ github.run_id }}
+        cache-from: type=gha
+        platforms: linux/amd64
+
+    - name: Verify the non-root variant is usable
+      run: |
+        image="${{ env.IMAGE_NAME }}:nonroot-${{ github.run_id }}"
+
+        # Kubernetes rejects a symbolic user on runAsNonRoot pods, so the whole
+        # point of this variant is that the user is numeric.
+        user="$(docker image inspect "$image" --format '{{ .Config.User }}')"
+        echo "Non-root image runs as: ${user:-<unset>}"
+
+        if ! [[ "$user" =~ ^[0-9]+(:[0-9]+)?$ ]]; then
+          echo "Non-root image must declare a numeric USER, got '${user:-<unset>}'"
+          exit 1
+        fi
+
+        docker run --rm "$image" id
+        docker run --rm "$image" zsh -c 'echo "shell ok"'
+        docker run --rm "$image" curl --version >/dev/null && echo "tools ok"
+
+        echo "Non-root variant verified"
+
     - name: Test container size
       run: |
         echo "Checking container size..."

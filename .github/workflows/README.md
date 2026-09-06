@@ -48,12 +48,18 @@ its contents actually changed.
 3. Computes a **content fingerprint** (see below) and compares it against the
    one recorded in `package-versions.json`.
 4. If unchanged, stops. Nothing is committed, tagged or published.
-5. If changed, bumps the version, updates the Dockerfile labels, and pushes a
-   multi-arch image (`linux/amd64`, `linux/arm64`) to Docker Hub.
-6. Verifies the published manifest contains both platforms and runs the
-   published arm64 image under emulation.
+5. If changed, bumps the version, updates the Dockerfile labels, and pushes
+   two multi-arch images (`linux/amd64`, `linux/arm64`) to Docker Hub: the
+   default root image and the `nonroot` variant built from the same Dockerfile
+   with `--target nonroot`.
+6. Verifies both published manifests contain both platforms, runs the published
+   arm64 image under emulation, and asserts the non-root image declares a
+   **numeric** `USER` — a symbolic one would pass here and then be rejected by
+   every cluster enforcing `runAsNonRoot`, which is the entire point of the tag.
 7. Only then commits to `develop`, merges to `main`, tags, and creates the
    GitHub release.
+
+**Tags published per release**: `latest`, `vX.Y.Z`, `nonroot`, `vX.Y.Z-nonroot`.
 
 The publish happens **before** any git mutation on purpose: if the Docker push
 fails, nothing has been recorded, and the next run retries from a clean state.
@@ -65,7 +71,9 @@ fails, nothing has been recorded, and the next run retries from a clean state.
 **Triggers**: pushes and pull requests on `main` and `develop`.
 
 Validates the Dockerfile, checks that `version.env` and the Dockerfile labels
-agree, then builds and functionally tests the image.
+agree, then builds and functionally tests both the default image and the
+`nonroot` target — including the numeric-`USER` assertion — so a broken variant
+cannot reach `main`.
 
 ## The Fingerprint
 

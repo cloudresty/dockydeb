@@ -3,7 +3,7 @@
 #
 
 # Base Image
-FROM    debian:trixie-slim
+FROM    debian:trixie-slim AS dockydeb
 
 # Image details
 LABEL   org.opencontainers.image.authors="Cloudresty" \
@@ -37,10 +37,23 @@ RUN     apt-get update && \
         moreutils \
         \
         `# Networking: inspection, capture, connectivity` \
+        apache2-utils \
         bind9-dnsutils \
+        bridge-utils \
         conntrack \
         curl \
+        dhcping \
         ethtool \
+        fping \
+        hping3 \
+        iftop \
+        iptables \
+        iptraf-ng \
+        ipset \
+        ipvsadm \
+        ldnsutils \
+        nftables \
+        tcptraceroute \
         iperf3 \
         iproute2 \
         iputils-arping \
@@ -135,3 +148,30 @@ RUN     chmod +x /etc/update-motd.d/20-welcome && \
 
 # Set Workdir
 WORKDIR /root
+
+#
+# Non-root variant, published as the ':nonroot' tag.
+#
+# Kubernetes refuses an image with a symbolic user on a pod that sets
+# runAsNonRoot: true — "container has runAsNonRoot and image has non-numeric
+# user (root), cannot verify user is non-root" — so `kubectl debug` cannot
+# attach to hardened workloads. A numeric USER fixes that.
+#
+# Raw-socket tools (tcpdump, nmap, ping, hping3) need NET_RAW/NET_ADMIN here;
+# this variant trades them for admission into restricted-PodSecurity clusters.
+#
+FROM    dockydeb AS nonroot
+
+RUN     groupadd --gid 65532 dockydeb && \
+        useradd --uid 65532 --gid 65532 --create-home --shell /usr/bin/zsh dockydeb && \
+        cp -a /root/.oh-my-zsh /root/.zshrc /root/.p10k.zsh /home/dockydeb/ && \
+        chown -R 65532:65532 /home/dockydeb
+
+USER    65532:65532
+WORKDIR /home/dockydeb
+
+#
+# Default variant, running as root. Kept last so a plain `docker build` with no
+# --target still produces the root image the published tags have always been.
+#
+FROM    dockydeb AS root

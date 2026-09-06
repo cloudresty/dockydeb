@@ -197,6 +197,23 @@ jobs:
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.next }}
 
+      # Same contents, but with a numeric USER so `kubectl debug` can attach to
+      # pods that set runAsNonRoot: true.
+      - name: Build and push non-root release image
+        if: steps.decide.outputs.publish == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: nonroot
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:nonroot
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.next }}-nonroot
+
       - name: Verify the published image
         if: steps.decide.outputs.publish == 'true'
         run: |
@@ -223,7 +240,22 @@ jobs:
           echo "Running the published arm64 image under emulation..."
           docker run --rm --platform linux/arm64 "${IMAGE_NAME}:${next}" zsh --version
 
-          echo "Published image verified on linux/amd64 and linux/arm64."
+          # The non-root tag exists solely to satisfy runAsNonRoot admission,
+          # which requires a NUMERIC user. A symbolic one would be admitted by
+          # this workflow and then rejected by every hardened cluster, so the
+          # check is on the published image rather than on the Dockerfile.
+          docker pull --quiet "${IMAGE_NAME}:${next}-nonroot" >/dev/null
+          user="$(docker image inspect "${IMAGE_NAME}:${next}-nonroot" --format '{{ .Config.User }}')"
+          echo "Non-root image runs as: ${user:-<unset>}"
+
+          if ! [[ "$user" =~ ^[0-9]+(:[0-9]+)?$ ]]; then
+            echo "::error::Non-root image must declare a numeric USER, got '${user:-<unset>}'"
+            exit 1
+          fi
+
+          docker run --rm "${IMAGE_NAME}:${next}-nonroot" id
+
+          echo "Published images verified on linux/amd64 and linux/arm64."
 
       - name: Commit, merge, tag and release
         if: steps.decide.outputs.publish == 'true'
@@ -272,6 +304,13 @@ jobs:
             echo "docker pull cloudresty/dockydeb:latest"
             echo '```'
             echo
+            echo "For clusters that enforce \`runAsNonRoot\`:"
+            echo
+            echo '```bash'
+            echo "docker pull cloudresty/dockydeb:${next}-nonroot"
+            echo "docker pull cloudresty/dockydeb:nonroot"
+            echo '```'
+            echo
             echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
           } > "${RUNNER_TEMP}/release-notes.md"
 
@@ -292,7 +331,7 @@ jobs:
 
           if [[ "${{ steps.decide.outputs.publish }}" == "true" ]]; then
             {
-              echo "**Released**: ${{ steps.version.outputs.next }}"
+              echo "**Released**: ${{ steps.version.outputs.next }} (plus ${{ steps.version.outputs.next }}-nonroot)"
               echo "**Platforms**: linux/amd64, linux/arm64"
               echo
               echo "### Component changes"
