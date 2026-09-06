@@ -16,38 +16,99 @@ LABEL   org.opencontainers.image.authors="Cloudresty" \
         org.opencontainers.image.title="dockydeb" \
         org.opencontainers.image.description="Debian Based Debugging Container"
 
-ENV     LC_ALL=C.UTF-8, LANG=C.UTF-8
+ENV     LC_ALL=C.UTF-8 \
+        LANG=C.UTF-8
 
-# Update and Upgrade
+# Install the debugging toolkit.
+#
+# Updated, installed and cleaned in a single layer so the apt lists never reach
+# the published image — left behind they cost 21 MB for no benefit.
 RUN     apt-get update && \
         apt-get upgrade -y && \
-        apt-get clean
-
-# Install Packages
-RUN     apt-get install -y \
-        curl \
-        dnsutils \
-        git \
-        iputils-ping \
-        gnupg \
-        htop \
-        btop \
-        jq \
-        net-tools \
-        ncdu \
-        telnet \
-        unzip \
-        vim \
-        wget \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        \
+        `# Shell, editors and terminal` \
         zsh \
-        zip
+        bash-completion \
+        less \
+        nano \
+        vim \
+        tmux \
+        moreutils \
+        \
+        `# Networking: inspection, capture, connectivity` \
+        bind9-dnsutils \
+        conntrack \
+        curl \
+        ethtool \
+        iperf3 \
+        iproute2 \
+        iputils-arping \
+        iputils-ping \
+        iputils-tracepath \
+        mtr-tiny \
+        net-tools \
+        netcat-openbsd \
+        ngrep \
+        nmap \
+        socat \
+        tcpdump \
+        telnet \
+        traceroute \
+        wget \
+        whois \
+        \
+        `# TLS and trust` \
+        ca-certificates \
+        gnupg \
+        openssl \
+        \
+        `# Processes, syscalls and resources` \
+        btop \
+        htop \
+        iotop \
+        lsof \
+        ltrace \
+        ncdu \
+        procps \
+        psmisc \
+        strace \
+        \
+        `# Files, text and inspection` \
+        binutils \
+        bsdextrautils \
+        diffutils \
+        fd-find \
+        file \
+        jq \
+        ripgrep \
+        tree \
+        \
+        `# Archives` \
+        bzip2 \
+        unzip \
+        xz-utils \
+        zip \
+        zstd \
+        \
+        `# Data clients and transfer` \
+        git \
+        postgresql-client \
+        redis-tools \
+        rsync \
+        sqlite3 \
+        && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+# Debian ships fd as 'fdfind' to avoid a name clash; expose the usual name too.
+RUN     ln -s "$(command -v fdfind)" /usr/local/bin/fd
 
 # Set zsh as default shell
 RUN     chsh -s $(which zsh)
 
 # Install Oh My Zsh
-RUN     apt-get install -y zsh && \
-        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+RUN     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
 # Install Powerlevel10K Theme
 RUN     git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
