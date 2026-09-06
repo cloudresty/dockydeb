@@ -1,220 +1,193 @@
 # DockyDEB CI/CD Workflows
 
-This directory contains the GitHub Actions workflows for the DockyDEB project following a **develop → main** release pattern.
+This directory contains the GitHub Actions workflows for the DockyDEB project.
+
+DockyDEB is a debugging container whose value is being current, so the release
+pipeline is built around one question: **does a freshly built image differ from
+the one already published?** If it does, a new version ships. If it does not,
+nothing happens.
 
 ## Workflow Architecture
 
 ```mermaid
 graph TD
-    A[Weekly Schedule<br/>Sunday 2 AM UTC] --> B[Weekly Update<br/>develop branch]
-    B --> C[Update packages & version]
-    C --> D[CI Validation]
-    D --> E{Tests Pass?}
-    E -->|Yes| F[Auto-Merge to Main]
-    E -->|No| G[Block Merge]
-    F --> H[Create PR: develop → main]
-    H --> I[Auto-merge PR]
-    I --> J[Auto-Release]
-    J --> K[Create GitHub Release]
-    K --> L[Push to Docker Hub]
+    A[Weekly Schedule<br/>Sunday 2 AM UTC] --> B[Build candidate image<br/>no cache, fresh base pull]
+    B --> C[Functional tests]
+    C --> D[Fingerprint image contents]
+    D --> E{Fingerprint changed?}
+    E -->|No| F[Stop — nothing to publish]
+    E -->|Yes| G[Bump version + labels]
+    G --> H[Build & push multi-arch<br/>to Docker Hub]
+    H --> I[Verify published manifest<br/>amd64 + arm64]
+    I --> J[Commit to develop]
+    J --> K[Merge develop → main]
+    K --> L[Tag + GitHub release]
 ```
+
+Everything above happens in **a single workflow run**. This is deliberate — see
+[Why one workflow](#why-one-workflow).
 
 ## Workflows
 
 ### 1. Weekly Update (`weekly-update.yaml`)
 
-**Purpose**: Intelligently checks for updates and only creates new versions when actual updates are detected.
+**Purpose**: Rebuild the container weekly and publish a new version only when
+its contents actually changed.
 
 **Triggers**:
 
-- **Scheduled**: Every Sunday at 2:00 AM UTC (runs on main branch due to GitHub Actions limitations)
-- **Manual**: Can be triggered manually via GitHub Actions UI (with optional force update)
+- **Scheduled**: Every Sunday at 02:00 UTC.
+- **Manual**: `workflow_dispatch`, with optional `force_update` (publish even if
+  unchanged) and `release_type` (`patch`, `minor` or `major`).
 
 **What it does**:
 
-1. **Smart Update Detection**: Checks for updates to:
-   - Base image (debian:bookworm-slim)
-   - All apt packages
-   - Git repositories (Oh My Zsh, themes, plugins)
-2. **Conditional Version Bump**: Only increments version if updates are found
-3. **File Updates**: Updates `version.env`, `Dockerfile` labels, and `package-versions.json`
-4. **Container Build**: Builds and tests the container image (only if updates found)
-5. **Commit Changes**: Commits version updates to **develop branch** with detailed update summary
-6. **Triggers Pipeline**: Push to develop triggers the auto-merge-to-main workflow
+1. Builds a candidate image with `no-cache` and a fresh base image pull, so the
+   build genuinely resolves today's packages.
+2. Runs functional tests against the candidate.
+3. Computes a **content fingerprint** (see below) and compares it against the
+   one recorded in `package-versions.json`.
+4. If unchanged, stops. Nothing is committed, tagged or published.
+5. If changed, bumps the version, updates the Dockerfile labels, and pushes a
+   multi-arch image (`linux/amd64`, `linux/arm64`) to Docker Hub.
+6. Verifies the published manifest contains both platforms and runs the
+   published arm64 image under emulation.
+7. Only then commits to `develop`, merges to `main`, tags, and creates the
+   GitHub release.
 
-**Important**: This workflow runs on main but works on develop branch, then triggers the existing CI/CD pipeline.
+The publish happens **before** any git mutation on purpose: if the Docker push
+fails, nothing has been recorded, and the next run retries from a clean state.
 
-### 2. Auto Merge to Main (`auto-merge-to-main.yaml`)
+### 2. CI (`ci.yaml`)
 
-**Purpose**: Automatically merges validated changes from `develop` to `main`.
+**Purpose**: Validate human changes.
 
-**Triggers**:
+**Triggers**: pushes and pull requests on `main` and `develop`.
 
-- **Push**: On pushes to `develop` branch
-- **Pull Request**: On merged PRs to `develop` branch
+Validates the Dockerfile, checks that `version.env` and the Dockerfile labels
+agree, then builds and functionally tests the image.
 
-**What it does**:
+## The Fingerprint
 
-1. **CI Wait**: Waits for CI workflow to complete successfully
-2. **Additional Validation**: Runs extra merge-specific tests
-3. **Create PR**: Creates auto-merge PR from develop → main
-4. **Auto-merge**: Enables auto-merge when all checks pass
+`scripts/image-fingerprint.sh` measures what is **actually inside a built
+image** and reduces it to one `sha256`:
 
-### 3. Auto Release (`auto-release.yaml`)
+- the resolved digest of the base image named in the `FROM` line;
+- every installed package and its exact version, read with `dpkg-query` — not
+  just the packages named in the Dockerfile, so a security patch to a
+  transitive dependency counts;
+- the commit each vendored repository (Oh My Zsh, Powerlevel10k, the zsh
+  plugins) was cloned at.
 
-**Purpose**: Creates GitHub releases and pushes Docker images from `main`.
+The result is stored in `package-versions.json` and compared on the next run.
+`scripts/fingerprint-diff.sh` turns the difference between two manifests into
+the bullet list used in the commit message and the release notes.
 
-**Triggers**:
+**Why measure the image rather than query apt?** Because a separate query can
+drift away from the image it claims to describe. The previous implementation
+did exactly that: it queried `debian:bookworm-slim` while the Dockerfile built
+`debian:trixie-slim`, and its state file was written on a runner that was then
+discarded — so every value stayed empty, every package looked new every week,
+and the container was "updated" 27 times without a single image being published.
+A measurement taken from the built artefact cannot drift.
 
-- **Push**: On pushes to `main` branch (after merge from develop)
-- **Manual**: Can be triggered manually with release type selection
+## Why One Workflow
 
-**What it does**:
+The pipeline used to be three workflows chained by push events: Weekly Update
+pushed to `develop`, which was meant to trigger CI and Auto Merge, which was
+meant to trigger Auto Release.
 
-1. **Version Check**: Determines if a new release is needed
-2. **Container Build**: Builds and tests the final container
-3. **GitHub Release**: Creates tagged release with changelog
-4. **Docker Push**: Pushes to Docker Hub with latest and versioned tags
-5. **Multi-platform**: Builds for both `linux/amd64` and `linux/arm64`
+**That chain can never fire.** GitHub deliberately suppresses workflow triggers
+for pushes made with the default `GITHUB_TOKEN`, to prevent infinite recursion.
+Every hop after the first was dead, and because the first workflow only printed
+what the next one *would* do, it reported success every week for six months
+while publishing nothing.
 
-### 4. Continuous Integration (`ci.yaml`)
-
-**Purpose**: Validates the DockyDEB container on every push and pull request.
-
-**Triggers**:
-
-- **Push**: On pushes to `main` or `develop` branches
-- **Pull Request**: On PRs to `main` or `develop` branches
-
-**What it does**:
-
-1. **Dockerfile Validation**: Checks syntax and structure
-2. **Version Consistency**: Ensures version.env and Dockerfile labels match
-3. **Container Build**: Builds the Docker image
-4. **Functionality Tests**: Tests all included tools and utilities
-
-**Test Coverage**:
-
-- Command-line tools (curl, wget, git, etc.)
-- Networking tools (ping, nslookup, etc.)
-- System monitoring tools (htop, btop, etc.)
-- Shell environment (zsh, Oh My Zsh)
-- Custom configurations (welcome message, etc.)
+The fix is not a stronger credential — it is not needing a second trigger.
+A version bump does not require independent validation the way a code change
+does, because the build and the tests already happen in the same run. So the
+whole pipeline lives in one job and uses the built-in `GITHUB_TOKEN` with
+`contents: write`. There is no App to install and no PAT to rotate or expire.
 
 ## Branch Strategy
 
 ### Development Branch (`develop`)
 
-- Weekly updates occur here
-- All development and testing happens on this branch
-- Must pass CI before merging to main
+- Automated version bumps land here first.
+- Human development and testing happens here.
 
 ### Production Branch (`main`)
 
-- Only receives changes via PR from develop
-- Represents the stable, released state
-- All releases and Docker pushes happen from this branch
+- The released state, and the default branch.
+- Brought up to date by the release workflow after a successful publish.
+- **Scheduled workflows always run the copy of the workflow file on `main`**, so
+  any change to `weekly-update.yaml` only takes effect once it reaches `main`.
 
 ## Usage
 
 ### Automatic Updates
 
-The entire pipeline runs automatically:
-
-1. **Sunday 2 AM UTC**: Weekly update runs on develop branch
-2. **After update**: CI validates the changes
-3. **If CI passes**: Auto-merge creates PR from develop → main
-4. **After merge**: Auto-release creates GitHub release and pushes to Docker Hub
+Sunday 02:00 UTC, unattended. A run that publishes nothing is the expected
+outcome on a quiet week and is not a failure.
 
 ### Manual Operations
 
-**Trigger Weekly Update**:
+**Trigger a check now**:
 
 ```bash
-# Via GitHub CLI
 gh workflow run weekly-update.yaml
-
-# Or via GitHub UI: Actions → Weekly Update → Run workflow
 ```
 
-**Manual Release**:
+**Force a release even if nothing changed**:
 
 ```bash
-# Via GitHub CLI with release type
-gh workflow run auto-release.yaml -f release_type=patch
-
-# Available options: patch, minor, major
+gh workflow run weekly-update.yaml -f force_update=true
 ```
 
-**Manual Develop → Main Merge**:
-Create a PR from develop to main branch manually if needed.
+**Cut a minor or major version**:
+
+```bash
+gh workflow run weekly-update.yaml -f force_update=true -f release_type=minor
+```
 
 ### Version Management
 
-**Automatic Versioning**:
+Versions are `vMAJOR.MINOR.PATCH` in `version.env`, mirrored into the
+Dockerfile's `org.opencontainers.image.version` and `.revision` labels. The
+workflow increments the patch by default and refuses to reuse a version that
+already has a tag.
 
-- Weekly updates increment patch version (e.g., `v1.1.1` → `v1.1.2`)
-- Changes are committed to develop branch first
+## Required Configuration
 
-**Manual Version Changes**:
+| Name | Kind | Purpose |
+| :--- | :--- | :--- |
+| `CLR__DOCKER_HUB_USERNAME` | Organisation variable | Docker Hub login |
+| `CLR__DOCKER_HUB_PAT` | Organisation secret | Docker Hub push token |
+| `GITHUB_TOKEN` | Built in | Commit, merge, tag, release |
 
-- Edit `version.env` for major/minor version bumps
-- Ensure Dockerfile labels match the version
-- Changes should be made on develop branch
+`GITHUB_TOKEN` needs `contents: write`, which the workflow requests explicitly
+and the repository already permits by default.
 
-1. Create a branch with your changes
-2. Push to the branch or open a PR
-3. CI workflow will automatically validate the changes
-4. Check the Actions tab for test results
+## Monitoring
 
-## Workflow Status
+A run's job summary states the decision, the fingerprint, and either the version
+released or that nothing needed releasing. Because publishing happens in the
+same job as the check, **a run that fails to publish fails the run** — the
+failure mode that hid the previous outage is gone.
 
-You can monitor workflow status via:
-
-- **GitHub Actions tab**: Real-time workflow execution
-- **Pull Request checks**: CI status on PRs
-- **Repository badges**: Status badges in README (if configured)
-- **Docker Hub**: Automatic image updates
-
-### Debugging
-
-1. **Check workflow logs**: Go to Actions tab → Select failed workflow → View logs
-2. **Test locally**: Build the container locally using the Makefile
-3. **Validate changes**: Use the CI workflow to validate before merging
+Worth a periodic glance: the latest GitHub release, the `latest` tag date on
+[Docker Hub](https://hub.docker.com/r/cloudresty/dockydeb/tags), and that they
+agree with `version.env`.
 
 ## Maintenance
 
-### Regular Tasks
-
-- Monitor workflow success rates
-- Update base images when new Debian versions are available
-- Review and update security scanning rules
-- Check for deprecated GitHub Actions
-
-### Updates Needed
-
-- **GitHub Actions versions**: Keep actions up to date (e.g., `actions/checkout@v4`)
-- **Docker base image**: Update Debian version in Dockerfile when needed
-- **Tool versions**: Tools are updated automatically with the weekly builds
+- Keep the pinned action majors current (`actions/checkout`,
+  `docker/*-action`).
+- Update the Debian release in the Dockerfile's `FROM` line when appropriate —
+  the fingerprint follows it automatically, no script change needed.
+- Tool versions need no maintenance; they are whatever the weekly rebuild
+  resolves.
 
 ---
 
-For more information about DockyDEB, see the main [README.md](../README.md) file.
-
-&nbsp;
-
-🔝 [back to top](#dockydeb-cicd-workflows)
-
-&nbsp;
-
-&nbsp;
-
----
-
-### Cloudresty
-
-[Website](https://cloudresty.com) &nbsp;|&nbsp; [LinkedIn](https://www.linkedin.com/company/cloudresty) &nbsp;|&nbsp; [BlueSky](https://bsky.app/profile/cloudresty.com) &nbsp;|&nbsp; [GitHub](https://github.com/cloudresty) &nbsp;|&nbsp; [Docker Hub](https://hub.docker.com/u/cloudresty)
-
-<sub>&copy; Cloudresty</sub>
-
-&nbsp;
+For more information about DockyDEB, see the main [README.md](../../README.md) file.
