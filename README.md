@@ -8,7 +8,15 @@
 
 &nbsp;
 
-DockyDEB is a Debian-based Docker image from [Cloudresty.com](https://cloudresty.com) packaged with a small set of tools for quick and easy debugging sessions.
+DockyDEB is a Debian-based debugging container from [Cloudresty.com](https://cloudresty.com) — a full toolkit for debugging sessions of every kind: networking, DNS, TLS, processes, syscalls, storage and data stores, in a comfortable zsh shell.
+
+&nbsp;
+
+It is built on **Debian trixie**, so it runs the same **glibc** as most production images. That matters when you are debugging: a musl-based container can resolve DNS differently from the glibc application you are trying to diagnose, and `strace`, `ltrace` and `gdb` behave differently against glibc binaries. What you observe in DockyDEB is what your workload experiences.
+
+&nbsp;
+
+The image is **rebuilt every week** and republished only when its contents actually change, so a running DockyDEB carries current Debian security updates rather than whatever was current at the last manual release.
 
 DockyDEB can be used locally or in a Kubernetes cluster as a shell pod. Below are some examples of how to use it. If a specific version is required, please use the appropriate tag.
 
@@ -16,27 +24,23 @@ DockyDEB can be used locally or in a Kubernetes cluster as a shell pod. Below ar
 
 ## Included Tools
 
-DockyDEB includes a comprehensive set of debugging and system administration tools:
+### Networking & Connectivity
 
-### Network & Connectivity
-
-- `curl`, `wget` - Download tools and HTTP clients
-- `dnsutils` - DNS lookup tools (nslookup, dig)
-- `iputils-ping` - Network ping utility
-- `net-tools` - Network configuration tools
-- `telnet` - Terminal network protocol
-
-&nbsp;
-
-🔝 [back to top](#dockydeb)
-
-&nbsp;
-
-### System Monitoring & Management
-
-- `htop` - Interactive process viewer
-- `btop` - Modern system monitor
-- `ncdu` - Disk usage analyzer
+- `iproute2` — the modern stack: `ip`, `ss`, `tc`
+- `net-tools` — `ifconfig`, `netstat`, `route` for familiarity
+- `bind9-dnsutils` — `dig`, `host`, `nslookup`; `ldnsutils` adds `drill`
+- `curl`, `wget` — HTTP clients and downloads
+- `tcpdump`, `ngrep` — packet capture and payload grep
+- `nmap`, `hping3` — port scanning and packet crafting
+- `netcat-openbsd`, `socat`, `telnet` — raw sockets and relays
+- `traceroute`, `tcptraceroute`, `mtr-tiny`, `iputils-tracepath` — path discovery
+- `iputils-ping`, `iputils-arping`, `fping` — reachability, including at layer 2
+- `iperf3` — throughput measurement
+- `iftop`, `iptraf-ng` — live bandwidth by connection
+- `iptables`, `nftables`, `ipset`, `ipvsadm`, `conntrack` — packet filtering, NAT and connection tracking, for debugging NetworkPolicy, kube-proxy and IPVS
+- `bridge-utils`, `ethtool` — bridges and NIC settings
+- `apache2-utils` — `ab` for HTTP benchmarking
+- `whois`, `dhcping` — registry lookups and DHCP probing
 
 &nbsp;
 
@@ -44,12 +48,54 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 
 &nbsp;
 
-### Development & Text Processing
+### TLS & Trust
 
-- `git` - Version control system
-- `vim` - Text editor
-- `jq` - JSON processor
-- `unzip`, `zip` - Archive utilities
+- `openssl` — `s_client`, certificate inspection, key handling
+- `ca-certificates` — the system trust store
+- `gnupg` — signature and key verification
+
+&nbsp;
+
+🔝 [back to top](#dockydeb)
+
+&nbsp;
+
+### Processes, Syscalls & Resources
+
+- `procps` — `ps`, `top`, `vmstat`, `free`, `watch`
+- `psmisc` — `killall`, `pstree`, `fuser`
+- `htop`, `btop` — interactive process viewers
+- `lsof` — open files, sockets and the processes holding them
+- `strace`, `ltrace` — syscall and library-call tracing
+- `iotop`, `ncdu` — I/O by process, disk usage by directory
+
+&nbsp;
+
+🔝 [back to top](#dockydeb)
+
+&nbsp;
+
+### Files, Text & Binaries
+
+- `ripgrep` (`rg`), `fd-find` (`fd`) — fast search
+- `jq` — JSON processing
+- `file`, `tree`, `diffutils` — identification, structure, comparison
+- `bsdextrautils` — `hexdump`, `column`
+- `binutils` — `objdump`, `strings`, `nm`, `readelf` for binary inspection
+- `bzip2`, `unzip`, `xz-utils`, `zip`, `zstd` — archives
+
+&nbsp;
+
+🔝 [back to top](#dockydeb)
+
+&nbsp;
+
+### Data Stores & Transfer
+
+- `postgresql-client` — `psql`
+- `redis-tools` — `redis-cli`
+- `sqlite3` — local database inspection
+- `git`, `rsync` — version control and file transfer
 
 &nbsp;
 
@@ -59,11 +105,37 @@ DockyDEB includes a comprehensive set of debugging and system administration too
 
 ### Shell Environment
 
-- `zsh` - Advanced shell (default)
-- Oh My Zsh - ZSH framework with plugins
-- Powerlevel10K theme - Beautiful terminal prompt
-- Auto-suggestions and syntax highlighting
+- `zsh` — the default shell
+- Oh My Zsh with auto-suggestions and syntax highlighting
+- Powerlevel10K prompt
+- `vim`, `nano`, `less`, `tmux`, `moreutils`, `bash-completion`
 - Custom welcome message
+
+&nbsp;
+
+🔝 [back to top](#dockydeb)
+
+&nbsp;
+
+## Image Variants
+
+| Tag | Runs as | Use it when |
+| :--- | :--- | :--- |
+| `latest`, `vX.Y.Z` | `root` | Default. Full capability, including packet capture. |
+| `nonroot`, `vX.Y.Z-nonroot` | UID/GID `65532` | The cluster enforces `runAsNonRoot`. |
+
+Both are published for `linux/amd64` and `linux/arm64`.
+
+The non-root variant exists because Kubernetes refuses an image with a symbolic
+user on a pod with `runAsNonRoot: true` — `container has runAsNonRoot and image
+has non-numeric user (root), cannot verify user is non-root` — which otherwise
+makes `kubectl debug` unusable on hardened workloads. It declares a numeric
+`USER`, so it is admitted.
+
+Raw-socket tools (`tcpdump`, `nmap`, `ping`, `hping3`) need `NET_RAW`, and
+`iptables`/`conntrack` need `NET_ADMIN`. The non-root variant trades those for
+admission into restricted-PodSecurity clusters; grant the capabilities
+explicitly if you need them.
 
 &nbsp;
 
@@ -125,6 +197,43 @@ kubectl run dockydeb \
     --namespace=default \
     --image=cloudresty/dockydeb:latest \
     --command -- zsh
+```
+
+&nbsp;
+
+### Debugging a running pod
+
+Attach DockyDEB to a live pod as an ephemeral container, sharing its network
+namespace — so `ss`, `tcpdump` and `dig` see exactly what the workload sees:
+
+&nbsp;
+
+```bash
+kubectl debug -it <pod> \
+    --image=cloudresty/dockydeb:latest \
+    --target=<container> \
+    -- zsh
+```
+
+&nbsp;
+
+On a cluster that enforces `runAsNonRoot`, use the non-root variant instead:
+
+&nbsp;
+
+```bash
+kubectl debug -it <pod> \
+    --image=cloudresty/dockydeb:nonroot \
+    --target=<container> \
+    -- zsh
+```
+
+&nbsp;
+
+### Debugging a node
+
+```bash
+kubectl debug node/<node> -it --image=cloudresty/dockydeb:latest -- zsh
 ```
 
 &nbsp;

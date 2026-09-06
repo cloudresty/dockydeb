@@ -1,220 +1,347 @@
 name: Weekly Update
 
-# This CI workflow runs weekly on the main branch (due to GitHub Actions limitations)
-# but checks out and updates the develop branch when updates are detected.
-# The auto-merge-to-main workflow will then handle merging to main and releasing.
+# One workflow does the whole job: measure the image, decide whether anything
+# actually changed, and if so publish, bump, merge, tag and release.
+#
+# It is deliberately NOT split into separate workflows chained by push events.
+# The default GITHUB_TOKEN cannot trigger another workflow run, so a chain like
+# that stops silently at the first hop — which is how this pipeline published
+# nothing for six months while reporting success every week.
 
 on:
   schedule:
-    # Run every Sunday at 2:00 AM UTC (runs on default branch: main)
+    # Sunday 02:00 UTC. Scheduled runs always execute the copy of this file on
+    # the default branch, so edits here take effect only once merged to main.
     - cron: '0 2 * * 0'
   workflow_dispatch:
-    # Allow manual trigger
     inputs:
       force_update:
-        description: 'Force update even if no changes detected'
+        description: 'Publish even when the image is unchanged'
         required: false
         default: false
         type: boolean
+      release_type:
+        description: 'Which part of the version to increment'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dockydeb-release
+  cancel-in-progress: false
 
 env:
-  REGISTRY: docker.io
   IMAGE_NAME: cloudresty/dockydeb
 
 jobs:
-  check-updates:
+  update:
+    name: Check, Build and Publish
     runs-on: ubuntu-latest
-    outputs:
-      updates-available: ${{ steps.check.outputs.updates_available }}
-      update-summary: ${{ steps.check.outputs.update_summary }}
-      should-update: ${{ steps.decide.outputs.should_update }}
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        ref: develop
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: develop
+          fetch-depth: 0
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Fetch main and tags
+        run: git fetch --tags --prune origin main develop
 
-    - name: Check for updates
-      id: check
-      run: |
-        echo "Running update detection script..."
-        chmod +x scripts/check-updates.sh
-        ./scripts/check-updates.sh
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
-    - name: Decide if update is needed
-      id: decide
-      run: |
-        updates_available="${{ steps.check.outputs.updates_available }}"
-        force_update="${{ github.event.inputs.force_update }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-        if [[ "$updates_available" == "true" ]] || [[ "$force_update" == "true" ]]; then
-          echo "should_update=true" >> $GITHUB_OUTPUT
-          echo "Update needed: updates_available=$updates_available, force_update=$force_update"
-        else
-          echo "should_update=false" >> $GITHUB_OUTPUT
-          echo "No update needed: updates_available=$updates_available, force_update=$force_update"
-        fi
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.CLR__DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.CLR__DOCKER_HUB_PAT }}
 
-  update-version:
-    runs-on: ubuntu-latest
-    needs: [check-updates]
-    if: needs.check-updates.outputs.should-update == 'true'
-    outputs:
-      new-version: ${{ steps.version.outputs.new-version }}
-      version-changed: ${{ steps.version.outputs.version-changed }}
+      # No cache and a fresh base image pull. A cached build would reproduce
+      # last week's packages and the fingerprint would never move.
+      - name: Build candidate image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          pull: true
+          no-cache: true
+          tags: ${{ env.IMAGE_NAME }}:candidate
 
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        ref: develop
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
+      - name: Test candidate image
+        run: |
+          echo "Testing candidate container..."
+          docker run --rm "${IMAGE_NAME}:candidate" zsh --version
+          docker run --rm "${IMAGE_NAME}:candidate" curl --version
+          docker run --rm "${IMAGE_NAME}:candidate" git --version
+          docker run --rm "${IMAGE_NAME}:candidate" jq --version
+          docker run --rm "${IMAGE_NAME}:candidate" bash -c \
+            'command -v dig && command -v ping && command -v netstat'
+          docker run --rm "${IMAGE_NAME}:candidate" test -d /root/.oh-my-zsh
+          docker run --rm "${IMAGE_NAME}:candidate" test -f /etc/update-motd.d/20-welcome
+          docker run --rm "${IMAGE_NAME}:candidate" zsh -c 'echo "shell ok"'
+          echo "Candidate image passed functional tests."
 
-    - name: Get current version
-      id: current-version
-      run: |
-        current_version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
-        echo "current-version=${current_version}" >> $GITHUB_OUTPUT
-        echo "Current version: ${current_version}"
+      - name: Fingerprint the image
+        id: fingerprint
+        run: |
+          previous="$(jq -r '.fingerprint // ""' package-versions.json)"
+          current="$(scripts/image-fingerprint.sh \
+            "${IMAGE_NAME}:candidate" "${RUNNER_TEMP}/fingerprint.json")"
 
-    - name: Generate new version
-      id: version
-      run: |
-        current_version="${{ steps.current-version.outputs.current-version }}"
-        # Remove 'v' prefix if present
-        version_number=${current_version#v}
+          {
+            echo "previous=${previous}"
+            echo "current=${current}"
+          } >> "$GITHUB_OUTPUT"
 
-        # Split version into parts (assuming semver x.y.z)
-        IFS='.' read -r major minor patch <<< "$version_number"
+          echo "Previous fingerprint: ${previous:-<none recorded>}"
+          echo "Current fingerprint:  ${current}"
 
-        # Increment patch version
-        new_patch=$((patch + 1))
-        new_version="v${major}.${minor}.${new_patch}"
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          previous="${{ steps.fingerprint.outputs.previous }}"
+          current="${{ steps.fingerprint.outputs.current }}"
+          forced="${{ inputs.force_update }}"
 
-        echo "new-version=${new_version}" >> $GITHUB_OUTPUT
-        echo "New version: ${new_version}"
+          if [[ "$previous" != "$current" ]]; then
+            publish=true
+            reason="the container contents changed"
+          elif [[ "$forced" == "true" ]]; then
+            publish=true
+            reason="the container is unchanged, but a publish was forced manually"
+          else
+            publish=false
+            reason="the container is identical to the published version"
+          fi
 
-        # Always mark as changed since we only get here if updates are available
-        echo "version-changed=true" >> $GITHUB_OUTPUT
+          {
+            echo "publish=${publish}"
+            echo "reason=${reason}"
+          } >> "$GITHUB_OUTPUT"
 
-    - name: Update version.env
-      run: |
-        new_version="${{ steps.version.outputs.new-version }}"
-        echo "DOCKYDEB_VERSION=${new_version}" > version.env
-        echo "Updated version.env to ${new_version}"
+          echo "Decision: publish=${publish} — ${reason}"
 
-    - name: Update Dockerfile version labels
-      run: |
-        new_version="${{ steps.version.outputs.new-version }}"
-        version_number=${new_version#v}
+      - name: Determine next version
+        id: version
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          current="$(grep '^DOCKYDEB_VERSION=' version.env | cut -d'=' -f2)"
+          IFS='.' read -r major minor patch <<< "${current#v}"
 
-        # Update the version and revision labels in Dockerfile
-        sed -i "s/org\.opencontainers\.image\.version=\"[^\"]*\"/org.opencontainers.image.version=\"${version_number}\"/g" Dockerfile
-        sed -i "s/org\.opencontainers\.image\.revision=\"[^\"]*\"/org.opencontainers.image.revision=\"${version_number}\"/g" Dockerfile
+          case "${{ inputs.release_type || 'patch' }}" in
+            major) major=$(( major + 1 )); minor=0; patch=0 ;;
+            minor) minor=$(( minor + 1 )); patch=0 ;;
+            *)     patch=$(( patch + 1 )) ;;
+          esac
 
-        echo "Updated Dockerfile labels to ${version_number}"
+          next="v${major}.${minor}.${patch}"
 
-    - name: Commit version changes
-      run: |
-        new_version="${{ steps.version.outputs.new-version }}"
-        update_summary="${{ needs.check-updates.outputs.update-summary }}"
+          # Never reuse a version that already has a tag.
+          if git rev-parse -q --verify "refs/tags/${next}" >/dev/null; then
+            echo "::error::Tag ${next} already exists — refusing to reuse a version."
+            exit 1
+          fi
 
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add version.env Dockerfile package-versions.json
+          {
+            echo "current=${current}"
+            echo "next=${next}"
+            echo "number=${major}.${minor}.${patch}"
+          } >> "$GITHUB_OUTPUT"
 
-        # Create detailed commit message
-        git commit -m "chore: bump version to ${new_version} [automated]
+          echo "Releasing ${current} → ${next}"
 
-        Updates detected:
-        ${update_summary}" || exit 0
-        git push origin develop
+      - name: Apply version and record fingerprint
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          number="${{ steps.version.outputs.number }}"
 
-  docker-build-test:
-    runs-on: ubuntu-latest
-    needs: [check-updates, update-version]
-    if: needs.check-updates.outputs.should-update == 'true'
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+          scripts/fingerprint-diff.sh \
+            package-versions.json \
+            "${RUNNER_TEMP}/fingerprint.json" \
+            > "${RUNNER_TEMP}/component-changes.md"
+          cat "${RUNNER_TEMP}/component-changes.md"
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+          echo "DOCKYDEB_VERSION=${{ steps.version.outputs.next }}" > version.env
+          sed -i "s/org\.opencontainers\.image\.version=\"[^\"]*\"/org.opencontainers.image.version=\"${number}\"/" Dockerfile
+          sed -i "s/org\.opencontainers\.image\.revision=\"[^\"]*\"/org.opencontainers.image.revision=\"${number}\"/" Dockerfile
+          cp "${RUNNER_TEMP}/fingerprint.json" package-versions.json
 
-    - name: Extract version from version.env
-      id: version
-      run: |
-        version=$(grep "DOCKYDEB_VERSION=" version.env | cut -d'=' -f2)
-        version_number=${version#v}
-        echo "version=${version}" >> $GITHUB_OUTPUT
-        echo "version-number=${version_number}" >> $GITHUB_OUTPUT
-        echo "Building version: ${version}"
+      # Published before any git mutation on purpose: if the push fails,
+      # nothing has been committed, tagged or released, and the next run
+      # retries from a clean state.
+      - name: Build and push release image
+        if: steps.decide.outputs.publish == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.next }}
 
-    - name: Build Docker image (test)
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        file: ./Dockerfile
-        push: false
-        load: true
-        tags: |
-          ${{ env.IMAGE_NAME }}:test
-          ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64
+      # Same contents, but with a numeric USER so `kubectl debug` can attach to
+      # pods that set runAsNonRoot: true.
+      - name: Build and push non-root release image
+        if: steps.decide.outputs.publish == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: nonroot
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:nonroot
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.next }}-nonroot
 
-    - name: Test Docker image
-      run: |
-        echo "Testing basic container functionality..."
-        docker run --rm ${{ env.IMAGE_NAME }}:test zsh --version
-        docker run --rm ${{ env.IMAGE_NAME }}:test curl --version
-        docker run --rm ${{ env.IMAGE_NAME }}:test git --version
-        echo "All basic tests passed!"
+      - name: Verify the published image
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          next="${{ steps.version.outputs.next }}"
 
-  update-success:
-    runs-on: ubuntu-latest
-    needs: [check-updates, update-version, docker-build-test]
-    if: needs.check-updates.outputs.should-update == 'true' && success()
+          echo "Published manifest for ${next}:"
+          docker buildx imagetools inspect "${IMAGE_NAME}:${next}"
 
-    steps:
-    - name: Success notification
-      run: |
-        echo "Weekly DockyDEB update completed successfully!"
-        echo "Triggered by: ${{ github.event_name }}"
-        echo "Container build: PASSED"
-        echo "Version update: UPDATED to ${{ needs.update-version.outputs.new-version }}"
-        echo ""
-        echo "Update summary:"
-        echo "${{ needs.check-updates.outputs.update-summary }}"
-        echo ""
-        echo "Changes pushed to develop branch!"
-        echo "The auto-merge-to-main workflow will now:"
-        echo "1. Validate the changes"
-        echo "2. Merge develop to main"
-        echo "3. Trigger the auto-release workflow"
-        echo "4. Build and push Docker images"
-        echo "5. Create GitHub release"
+          platforms="$(docker buildx imagetools inspect "${IMAGE_NAME}:${next}" \
+            --format '{{ json .Manifest }}' \
+            | jq -r '[ (.manifests // [])[]
+                       | select(.platform.os != "unknown")
+                       | "\(.platform.os)/\(.platform.architecture)" ] | join(" ")')"
 
-  no-updates:
-    runs-on: ubuntu-latest
-    needs: [check-updates]
-    if: needs.check-updates.outputs.should-update == 'false'
+          echo "Platforms in the published manifest: ${platforms}"
 
-    steps:
-    - name: No updates notification
-      run: |
-        echo "No updates detected for DockyDEB container."
-        echo "Triggered by: ${{ github.event_name }}"
-        echo "All components are up to date:"
-        echo "- Base image: debian:bookworm-slim"
-        echo "- Package versions"
-        echo "- Git repositories (Oh My Zsh, themes, plugins)"
-        echo ""
-        echo "No action needed - container is current."
+          for required in linux/amd64 linux/arm64; do
+            if [[ " ${platforms} " != *" ${required} "* ]]; then
+              echo "::error::Published manifest is missing ${required}"
+              exit 1
+            fi
+          done
+
+          echo "Running the published arm64 image under emulation..."
+          docker run --rm --platform linux/arm64 "${IMAGE_NAME}:${next}" zsh --version
+
+          # The non-root tag exists solely to satisfy runAsNonRoot admission,
+          # which requires a NUMERIC user. A symbolic one would be admitted by
+          # this workflow and then rejected by every hardened cluster, so the
+          # check is on the published image rather than on the Dockerfile.
+          docker pull --quiet "${IMAGE_NAME}:${next}-nonroot" >/dev/null
+          user="$(docker image inspect "${IMAGE_NAME}:${next}-nonroot" --format '{{ .Config.User }}')"
+          echo "Non-root image runs as: ${user:-<unset>}"
+
+          if ! [[ "$user" =~ ^[0-9]+(:[0-9]+)?$ ]]; then
+            echo "::error::Non-root image must declare a numeric USER, got '${user:-<unset>}'"
+            exit 1
+          fi
+
+          docker run --rm "${IMAGE_NAME}:${next}-nonroot" id
+
+          echo "Published images verified on linux/amd64 and linux/arm64."
+
+      - name: Commit, merge, tag and release
+        if: steps.decide.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          next="${{ steps.version.outputs.next }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          {
+            echo "chore: release ${next} [automated]"
+            echo
+            echo "Published cloudresty/dockydeb:${next} for linux/amd64 and linux/arm64."
+            echo
+            echo "Component changes:"
+            cat "${RUNNER_TEMP}/component-changes.md"
+          } > "${RUNNER_TEMP}/commit-message.txt"
+
+          git add version.env Dockerfile package-versions.json
+          git commit --file "${RUNNER_TEMP}/commit-message.txt"
+          git push origin develop
+
+          # Bring main up to the state that was just published.
+          git checkout -B main origin/main
+          git merge --no-ff origin/develop -m "chore: release ${next}"
+          git push origin main
+
+          git tag -a "${next}" -m "DockyDEB ${next}"
+          git push origin "${next}"
+
+          {
+            echo "## DockyDEB ${next}"
+            echo
+            echo "Automated weekly rebuild — published because ${{ steps.decide.outputs.reason }}."
+            echo
+            echo "### Component changes"
+            echo
+            cat "${RUNNER_TEMP}/component-changes.md"
+            echo
+            echo "### Usage"
+            echo
+            echo '```bash'
+            echo "docker pull cloudresty/dockydeb:${next}"
+            echo "docker pull cloudresty/dockydeb:latest"
+            echo '```'
+            echo
+            echo "For clusters that enforce \`runAsNonRoot\`:"
+            echo
+            echo '```bash'
+            echo "docker pull cloudresty/dockydeb:${next}-nonroot"
+            echo "docker pull cloudresty/dockydeb:nonroot"
+            echo '```'
+            echo
+            echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
+          } > "${RUNNER_TEMP}/release-notes.md"
+
+          gh release create "${next}" \
+            --title "DockyDEB ${next}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md" \
+            --target main
+
+      - name: Summary
+        if: always() && steps.decide.outcome == 'success'
+        run: |
+          {
+            echo "## DockyDEB Weekly Update"
+            echo
+            echo "**Decision**: ${{ steps.decide.outputs.reason }}"
+            echo "**Fingerprint**: \`${{ steps.fingerprint.outputs.current }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ steps.decide.outputs.publish }}" == "true" ]]; then
+            {
+              echo "**Released**: ${{ steps.version.outputs.next }} (plus ${{ steps.version.outputs.next }}-nonroot)"
+              echo "**Platforms**: linux/amd64, linux/arm64"
+              echo
+              echo "### Component changes"
+              echo
+              cat "${RUNNER_TEMP}/component-changes.md"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "**Released**: nothing — no new version was needed"
+              echo
+              echo "The published image already matches what a fresh build produces."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
