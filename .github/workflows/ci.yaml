@@ -56,6 +56,16 @@ jobs:
         echo "Version in Dockerfile: ${dockerfile_version}"
         echo "Revision in Dockerfile: ${dockerfile_revision}"
 
+        # Baked into the image so the welcome banner can show it; drifts
+        # silently if the release workflow ever stops updating it.
+        dockerfile_env=$(grep -o 'DOCKYDEB_VERSION=v[^ \\]*' Dockerfile | head -1 | cut -d'=' -f2)
+        echo "Version in Dockerfile ENV: ${dockerfile_env}"
+
+        if [ "$version_env" != "$dockerfile_env" ]; then
+          echo "Version mismatch: version.env=${version_env}, Dockerfile ENV=${dockerfile_env}"
+          exit 1
+        fi
+
         if [ "$version_number" != "$dockerfile_version" ] || [ "$version_number" != "$dockerfile_revision" ]; then
           echo "Version mismatch detected!"
           echo "   version.env: ${version_number}"

@@ -178,6 +178,7 @@ jobs:
           echo "DOCKYDEB_VERSION=${{ steps.version.outputs.next }}" > version.env
           sed -i "s/org\.opencontainers\.image\.version=\"[^\"]*\"/org.opencontainers.image.version=\"${number}\"/" Dockerfile
           sed -i "s/org\.opencontainers\.image\.revision=\"[^\"]*\"/org.opencontainers.image.revision=\"${number}\"/" Dockerfile
+          sed -i "s/DOCKYDEB_VERSION=v[0-9][^ \\]*/DOCKYDEB_VERSION=${{ steps.version.outputs.next }}/" Dockerfile
           cp "${RUNNER_TEMP}/fingerprint.json" package-versions.json
 
       # Published before any git mutation on purpose: if the push fails,

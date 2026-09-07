@@ -2,6 +2,10 @@
 
 clear
 
+# Version is baked in by the Dockerfile and kept in step with version.env by
+# the release workflow; the fallback keeps the banner sane in a local build.
+DOCKYDEB_RELEASE="${DOCKYDEB_VERSION:-(development build)}"
+
 # Welcome message
 WELCOME_DOCKYDEB="
   _____             _          _____  ______ ____
@@ -15,9 +19,15 @@ WELCOME_DOCKYDEB="
 
 ---
 
-Welcome to DockyDEB, a Debian-based Docker image from
-Cloudresty.com packaged with a small set of tools for
-quick and easy debugging sessions.
+Welcome to DockyDEB ${DOCKYDEB_RELEASE}, a Debian-based debugging
+container from Cloudresty.com, packed with the tools for
+networking, DNS, TLS, process, syscall, storage and
+data-store debugging sessions.
+
+  Networking   ip · ss · dig · tcpdump · nmap · socat · mtr
+  Filtering    iptables · nft · ipset · ipvsadm · conntrack
+  Processes    ps · top · htop · lsof · strace · ltrace
+  Data & text  psql · redis-cli · sqlite3 · jq · rg · fd
 
 For more details please have a look at the README file
 at https://github.com/cloudresty/dockydeb

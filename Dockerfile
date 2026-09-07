@@ -17,7 +17,8 @@ LABEL   org.opencontainers.image.authors="Cloudresty" \
         org.opencontainers.image.description="Debian Based Debugging Container"
 
 ENV     LC_ALL=C.UTF-8 \
-        LANG=C.UTF-8
+        LANG=C.UTF-8 \
+        DOCKYDEB_VERSION=v1.2.28
 
 # Install the debugging toolkit.
 #
@@ -148,6 +149,15 @@ RUN     chmod +x /etc/update-motd.d/20-welcome && \
 
 # Set Workdir
 WORKDIR /root
+
+# Start in zsh by default.
+#
+# `chsh` above sets root's LOGIN shell in /etc/passwd, which Docker never
+# consults — it runs the image's Cmd, inherited as ["bash"] from the base
+# image. Without this a bare `docker run -it` lands in bash, which reads no
+# .zshrc, so neither the welcome banner nor the Powerlevel10k prompt appears.
+# Set on the shared stage so both variants inherit it.
+CMD     ["zsh"]
 
 #
 # Non-root variant, published as the ':nonroot' tag.

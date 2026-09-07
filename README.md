@@ -145,7 +145,7 @@ explicitly if you need them.
 
 ## Docker Usage
 
-DockyDEB basic usage, suitable for most debugging sessions. This will start a DockyDEB based container with a shell prompt.
+DockyDEB basic usage, suitable for most debugging sessions. This will start a DockyDEB based container with a shell prompt. `zsh` is the image's default command, so there is nothing to append.
 
 &nbsp;
 
@@ -156,7 +156,7 @@ docker run \
     --rm \
     --name dockydeb \
     --hostname dockydeb \
-    cloudresty/dockydeb:latest zsh
+    cloudresty/dockydeb:latest
 ```
 
 &nbsp;
@@ -173,7 +173,7 @@ docker run \
     --name dockydeb \
     --hostname dockydeb \
     --volume /local-directory:/container-directory \
-    cloudresty/dockydeb:latest zsh
+    cloudresty/dockydeb:latest
 ```
 
 &nbsp;
