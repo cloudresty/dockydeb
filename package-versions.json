@@ -1,13 +1,13 @@
 {
-  "fingerprint": "caf5cc9b0dcbff5e2dbfa614cbe3b608e44c7fa2b0079f30a12499e1e468c3cd",
-  "last_updated": "2026-09-06T19:53:34Z",
+  "fingerprint": "db9ee301906a413bb5b24ec31d967de2d39445277a5fddabf3849ac6cdfc7cec",
+  "last_updated": "2026-09-07T07:21:56Z",
   "base_image": {
     "ref": "debian:trixie-slim",
     "digest": "sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132"
   },
   "git_repositories": {
-    "ohmyzsh": "426650fbe8943879af72703556ae5d1eb2eac734",
-    "powerlevel10k": "3308262dfbd743b6e1d3956a2b5572f7a049d692",
+    "ohmyzsh": "0b235c54ded642719588a70c03cd814df122d92c",
+    "powerlevel10k": "d05a1b00f9a61f9578bf9dc19b8451942dde8734",
     "zsh-autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
     "zsh-syntax-highlighting": "2fc57d63067c18b1100ecdbf684fa5baf49459d1"
   },
