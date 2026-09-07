@@ -145,7 +145,7 @@ explicitly if you need them.
 
 ## Docker Usage
 
-DockyDEB basic usage, suitable for most debugging sessions. This will start a DockyDEB based container with a shell prompt.
+DockyDEB basic usage, suitable for most debugging sessions. This will start a DockyDEB based container with a shell prompt. `zsh` is the image's default command, so there is nothing to append.
 
 &nbsp;
 
@@ -156,7 +156,7 @@ docker run \
     --rm \
     --name dockydeb \
     --hostname dockydeb \
-    cloudresty/dockydeb:latest zsh
+    cloudresty/dockydeb:latest
 ```
 
 &nbsp;
@@ -173,7 +173,19 @@ docker run \
     --name dockydeb \
     --hostname dockydeb \
     --volume /local-directory:/container-directory \
-    cloudresty/dockydeb:latest zsh
+    cloudresty/dockydeb:latest
+```
+
+&nbsp;
+
+`zsh` is the default shell, with Oh My Zsh, the Powerlevel10K prompt,
+auto-suggestions and syntax highlighting. If you would rather have a plain
+shell, append the one you want:
+
+&nbsp;
+
+```bash
+docker run --interactive --tty --rm cloudresty/dockydeb:latest bash
 ```
 
 &nbsp;
@@ -195,8 +207,7 @@ kubectl run dockydeb \
     --rm \
     --restart=Never \
     --namespace=default \
-    --image=cloudresty/dockydeb:latest \
-    --command -- zsh
+    --image=cloudresty/dockydeb:latest
 ```
 
 &nbsp;
@@ -211,8 +222,7 @@ namespace — so `ss`, `tcpdump` and `dig` see exactly what the workload sees:
 ```bash
 kubectl debug -it <pod> \
     --image=cloudresty/dockydeb:latest \
-    --target=<container> \
-    -- zsh
+    --target=<container>
 ```
 
 &nbsp;
@@ -224,8 +234,7 @@ On a cluster that enforces `runAsNonRoot`, use the non-root variant instead:
 ```bash
 kubectl debug -it <pod> \
     --image=cloudresty/dockydeb:nonroot \
-    --target=<container> \
-    -- zsh
+    --target=<container>
 ```
 
 &nbsp;
@@ -233,7 +242,7 @@ kubectl debug -it <pod> \
 ### Debugging a node
 
 ```bash
-kubectl debug node/<node> -it --image=cloudresty/dockydeb:latest -- zsh
+kubectl debug node/<node> -it --image=cloudresty/dockydeb:latest
 ```
 
 &nbsp;
