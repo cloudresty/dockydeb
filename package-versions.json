@@ -1,15 +1,15 @@
 {
-  "fingerprint": "b2fbe254e87484e08024c4b7b23f8ac4c3fc7159ba1d1c83ebac2546ff1468dc",
-  "last_updated": "2026-09-13T07:24:57Z",
+  "fingerprint": "fe98aa0ffde3bdd8e22965ca5b97a1e5f68d381b10d140a107650b6070906df1",
+  "last_updated": "2026-09-20T07:41:17Z",
   "base_image": {
     "ref": "debian:trixie-slim",
-    "digest": "sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132"
+    "digest": "sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a"
   },
   "git_repositories": {
-    "ohmyzsh": "be8da5c77192eb3da3699ea7c5e47bdfaa5eea4e",
+    "ohmyzsh": "157eb033f2a527021aac18c1f5850bbe3e3d223c",
     "powerlevel10k": "d05a1b00f9a61f9578bf9dc19b8451942dde8734",
     "zsh-autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
-    "zsh-syntax-highlighting": "2fc57d63067c18b1100ecdbf684fa5baf49459d1"
+    "zsh-syntax-highlighting": "0bfcb582e71d3abe604ce67bc0fe5a21f377507e"
   },
   "packages": {
     "adduser": "3.152",
@@ -19,9 +19,9 @@
     "base-passwd": "3.6.7",
     "bash": "5.2.37-2+b10",
     "bash-completion": "1:2.16.0-7",
-    "bind9-dnsutils": "1:9.20.26-1~deb13u1",
-    "bind9-host": "1:9.20.26-1~deb13u1",
-    "bind9-libs": "1:9.20.26-1~deb13u1",
+    "bind9-dnsutils": "1:9.20.29-1~deb13u1",
+    "bind9-host": "1:9.20.29-1~deb13u1",
+    "bind9-libs": "1:9.20.29-1~deb13u1",
     "binutils": "2.44-3",
     "binutils-common": "2.44-3",
     "binutils-x86-64-linux-gnu": "2.44-3",
