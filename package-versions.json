@@ -1,12 +1,12 @@
 {
-  "fingerprint": "fe98aa0ffde3bdd8e22965ca5b97a1e5f68d381b10d140a107650b6070906df1",
-  "last_updated": "2026-09-20T07:41:17Z",
+  "fingerprint": "5b57af42982b06d2bf78a86697b4add6ae6028e3c2edbc44fd683044433ba055",
+  "last_updated": "2026-09-27T07:59:15Z",
   "base_image": {
     "ref": "debian:trixie-slim",
     "digest": "sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a"
   },
   "git_repositories": {
-    "ohmyzsh": "157eb033f2a527021aac18c1f5850bbe3e3d223c",
+    "ohmyzsh": "74965c96098134b192f00084f966b4b02438a739",
     "powerlevel10k": "d05a1b00f9a61f9578bf9dc19b8451942dde8734",
     "zsh-autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
     "zsh-syntax-highlighting": "0bfcb582e71d3abe604ce67bc0fe5a21f377507e"
@@ -83,7 +83,7 @@
     "iputils-ping": "3:20240905-3",
     "iputils-tracepath": "3:20240905-3",
     "ipvsadm": "1:1.31-5",
-    "jq": "1.7.1-6+deb13u3",
+    "jq": "1.7.1-6+deb13u4",
     "krb5-locales": "1.21.3-5+deb13u1",
     "ldnsutils": "1.8.4-2+b1",
     "less": "668-1",
@@ -148,7 +148,7 @@
     "libipset13t64": "7.22-1+b1",
     "libjansson4": "2.14-2+b3",
     "libjemalloc2": "5.3.0-3",
-    "libjq1": "1.7.1-6+deb13u3",
+    "libjq1": "1.7.1-6+deb13u4",
     "libjson-c5": "0.18+ds-1",
     "libk5crypto3": "1.21.3-5+deb13u1",
     "libkeyutils1": "1.6.3-6",
