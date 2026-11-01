@@ -1,12 +1,12 @@
 {
-  "fingerprint": "4a99db3a8645ac16e2013b468c383788042aceafed5870ff5d15f123ef323e4d",
-  "last_updated": "2026-10-25T07:31:20Z",
+  "fingerprint": "cf64d03ebc57bc5bdba602b07fd5145534cda56f7b1e5dd475a8493dc52de3a3",
+  "last_updated": "2026-11-01T09:01:34Z",
   "base_image": {
     "ref": "debian:trixie-slim",
-    "digest": "sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad"
+    "digest": "sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4"
   },
   "git_repositories": {
-    "ohmyzsh": "2100c630ba4bd67bb48802c3e7da893a4fdaa1a0",
+    "ohmyzsh": "17a2b4c3a5855524ad4772a17ada0dc474e2fdf3",
     "powerlevel10k": "d05a1b00f9a61f9578bf9dc19b8451942dde8734",
     "zsh-autosuggestions": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5",
     "zsh-syntax-highlighting": "e6683f20e5c38d3e5447f45845d04ddda75d0f23"
@@ -307,7 +307,7 @@
     "tmux": "3.5a-3",
     "traceroute": "1:2.1.6-1",
     "tree": "2.2.1-1",
-    "tzdata": "2026e-0+deb13u1",
+    "tzdata": "2026f-0+deb13u1",
     "unzip": "6.0-29+deb13u1",
     "util-linux": "2.41.5-0+deb13u1",
     "vim": "2:9.1.1230-2",
